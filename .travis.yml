@@ -1,0 +1,11 @@
+language: go
+go:
+  - "1.11"
+before_install:
+  - go get -u github.com/golang/dep/...
+install:
+  - dep ensure
+script:
+  - ./test_coverage.sh
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
