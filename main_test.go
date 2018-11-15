@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -50,6 +51,72 @@ func TestGetApplications(t *testing.T) {
 	}
 
 }
+
+func TestAuditApplications(t *testing.T) {
+	tests := []struct {
+		name                 string
+		lsApplicationsResult []string
+		masListResult        []string
+		getCasksResult       []string
+		getCaskInfoResult    map[string][]string
+		expectedResult       map[string][]string
+		shouldError          bool
+	}{
+		{
+			name:                 "success",
+			lsApplicationsResult: []string{"App 1.app", "App 2.app", "App 3.app", "Safari.app"},
+			masListResult:        []string{"1171820258 App 2 (1.2.3)"},
+			getCasksResult:       []string{"app3"},
+			getCaskInfoResult: map[string][]string{
+				"app3": []string{"asdf", "artifacts", "App 3.app (App)"}},
+			expectedResult: map[string][]string{
+				"user": []string{"App 1.app"},
+				"brew": []string{"App 3.app"},
+				"mas":  []string{"App 2.app"}},
+		},
+		{
+			name:           "bad mas data",
+			masListResult:  []string{"foo"},
+			getCasksResult: []string{"app3"},
+			getCaskInfoResult: map[string][]string{
+				"app3": []string{"asdf", "artifacts", "App 3.app (App)"}},
+			lsApplicationsResult: nil,
+			shouldError:          true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := new(MockCommand)
+			m := MacHelper{cm: cmd}
+
+			if len(tt.getCasksResult) > 0 {
+				cmd.On("runCommand", "brew", []string{"cask", "list"}).Return(tt.getCasksResult, nil)
+			}
+			if len(tt.masListResult) > 0 {
+				cmd.On("runCommand", "mas", []string{"list"}).Return(tt.masListResult, nil)
+			}
+			if len(tt.lsApplicationsResult) > 0 {
+				cmd.On("runCommand", "ls", []string{"/Applications"}).Return(tt.lsApplicationsResult, nil)
+			}
+
+			for k, v := range tt.getCaskInfoResult {
+				p := []string{"cask", "info"}
+				p = append(p, k)
+				cmd.On("runCommand", "brew", p).Return(v, nil)
+			}
+
+			res, err := AuditApplications(&m)
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedResult, res)
+			}
+			cmd.AssertExpectations(t)
+		})
+	}
+
+}
 func Test_getAppNameFromCaskInfo(t *testing.T) {
 
 	tests := []struct {
@@ -90,11 +157,36 @@ func Test_getAppNameFromCaskInfo(t *testing.T) {
 			},
 			"",
 		},
-		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, getAppNameFromCaskInfo(tt.info))
+		})
+	}
+}
+
+func Test_bytesWithNewLinesToStrings(t *testing.T) {
+
+	tests := []struct {
+		info []byte
+		want []string
+	}{
+		{
+			info: []byte(""),
+			want: []string{""},
+		},
+		{
+			info: []byte("foo\nbar\n"),
+			want: []string{"foo", "bar"},
+		},
+		{
+			info: []byte("foo\nbar"),
+			want: []string{"foo", "bar"},
+		},
+	}
+	for x, tt := range tests {
+		t.Run(fmt.Sprintf("%v", x), func(t *testing.T) {
+			require.Equal(t, tt.want, bytesWithNewLinesToStrings(tt.info))
 		})
 	}
 }

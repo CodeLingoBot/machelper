@@ -53,38 +53,41 @@ func main() {
 	a := MacHelper{
 		cm: &SystemCommands{},
 	}
-	run(&a)
+	AuditApplications(&a)
 }
 
-func run(b *MacHelper) error {
+// AuditApplications gives a breakdown of applications based on their source,
+// namely: (user, brew cask, mac app store)
+func AuditApplications(b *MacHelper) (map[string][]string, error) {
 	casks, err := b.getCasks()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	spew.Dump(casks)
+	spew.Dump("casks", casks)
 
 	caskInfo := make(map[string][]string)
 	for _, cask := range casks {
 		info, err := b.getCaskInfo(cask)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		spew.Dump(info)
+		// spew.Dump(info)
 		caskInfo[cask] = info
 	}
-	spew.Dump(caskInfo)
+	spew.Dump("caskInfo", caskInfo)
 
 	masFoundApps, err := b.getMacAppStoreApplications()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	result := make(map[string][]string)
 	var userApps []string
 	var brewApps []string
 	var masApps []string
 	allApps, err := b.getApplications()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, app := range allApps {
 		if _, ok := defaultApps[app]; !ok {
@@ -116,21 +119,10 @@ func run(b *MacHelper) error {
 
 	}
 
-	spew.Dump("userApps", userApps)
-	spew.Dump("brewApps", brewApps)
-	spew.Dump("masApps", masApps)
-	return nil
-}
-
-func getAppNameFromCaskInfo(info []string) string {
-
-	const AppArtifactSuffix = " (App)"
-	for _, line := range info {
-		if strings.Contains(line, AppArtifactSuffix) {
-			return strings.Split(line, AppArtifactSuffix)[0]
-		}
-	}
-	return ""
+	result["user"] = userApps
+	result["brew"] = brewApps
+	result["mas"] = masApps
+	return result, nil
 }
 
 //MacHelper represents the main helper
@@ -176,7 +168,7 @@ func (b *MacHelper) getMacAppStoreApplications() ([]string, error) {
 		//    }
 		matches := re.FindAllStringSubmatch(app, -1)
 		if len(matches) != 1 || len(matches[0]) != 3 {
-			return nil, fmt.Errorf("regex parse error, got=%v", matches)
+			return nil, fmt.Errorf("regex parse error, src='%v', got='%v'", app, matches)
 		}
 		appName := strings.TrimRight(matches[0][2], " ")
 		executableNames = append(executableNames, fmt.Sprintf("%s.app", appName))
@@ -192,4 +184,15 @@ func (b *MacHelper) getCaskInfo(name string) ([]string, error) {
 
 func bytesWithNewLinesToStrings(bytes []byte) []string {
 	return strings.Split(strings.TrimSuffix(string(bytes[:]), "\n"), "\n")
+}
+
+func getAppNameFromCaskInfo(info []string) string {
+
+	const AppArtifactSuffix = " (App)"
+	for _, line := range info {
+		if strings.Contains(line, AppArtifactSuffix) {
+			return strings.Split(line, AppArtifactSuffix)[0]
+		}
+	}
+	return ""
 }
