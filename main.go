@@ -53,12 +53,12 @@ func main() {
 	a := MacHelper{
 		cm: &SystemCommands{},
 	}
-	AuditApplications(&a)
+	a.AuditApplications()
 }
 
 // AuditApplications gives a breakdown of applications based on their source,
 // namely: (user, brew cask, mac app store)
-func AuditApplications(b *MacHelper) (map[string][]string, error) {
+func (b *MacHelper) AuditApplications() (map[string][]string, error) {
 	casks, err := b.getCasks()
 	if err != nil {
 		return nil, err

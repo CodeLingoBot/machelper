@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -105,7 +106,7 @@ func TestAuditApplications(t *testing.T) {
 				cmd.On("runCommand", "brew", p).Return(v, nil)
 			}
 
-			res, err := AuditApplications(&m)
+			res, err := m.AuditApplications()
 			if tt.shouldError {
 				require.Error(t, err)
 			} else {
@@ -189,4 +190,15 @@ func Test_bytesWithNewLinesToStrings(t *testing.T) {
 			require.Equal(t, tt.want, bytesWithNewLinesToStrings(tt.info))
 		})
 	}
+}
+
+func TestRunSystemCommand(t *testing.T) {
+	sc := SystemCommands{}
+	res, err := sc.runCommand("fake", "cmd")
+	require.Len(t, res, 0)
+	require.Error(t, err)
+	res, err = sc.runCommand("ls")
+	require.True(t, len(res) > 0)
+	require.NoError(t, err)
+	spew.Dump(sc.runCommand("ls"))
 }
