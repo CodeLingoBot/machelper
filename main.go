@@ -1,13 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
 	"regexp"
 	"strings"
-
-	"github.com/davecgh/go-spew/spew"
+	"sync"
 )
 
 var defaultApps = map[string]struct{}{
@@ -53,38 +53,78 @@ func main() {
 	a := MacHelper{
 		cm: &SystemCommands{},
 	}
-	a.AuditApplications()
+	audit, _ := a.AuditApplications()
+	auditJSON, _ := json.Marshal(audit)
+	fmt.Println(string(auditJSON))
+}
+
+//BrewAudit holds audit results
+type BrewAudit struct {
+	Names []string `json:"names,omitempty"`
+}
+
+//BrewCaskAudit holds audit results
+type BrewCaskAudit struct {
+	Names     []string `json:"names,omitempty"`
+	Artifacts []string `json:"artifacts,omitempty"`
+}
+
+//AppStoreAudit holds audit results
+type AppStoreAudit struct {
+	Artifacts []string `json:"artifacts,omitempty"`
+}
+
+//UserInstalledAudit holds audit results
+type UserInstalledAudit struct {
+	Artifacts []string `json:"artifacts,omitempty"`
+}
+
+//ApplicationAudit holds audit results
+type ApplicationAudit struct {
+	Brew          BrewAudit          `json:"brew,omitempty"`
+	BrewCask      BrewCaskAudit      `json:"brew_cask,omitempty"`
+	AppStore      AppStoreAudit      `json:"app_store,omitempty"`
+	UserInstalled UserInstalledAudit `json:"user_installed,omitempty"`
 }
 
 // AuditApplications gives a breakdown of applications based on their source,
 // namely: (user, brew cask, mac app store)
-func (b *MacHelper) AuditApplications() (map[string][]string, error) {
+func (b *MacHelper) AuditApplications() (*ApplicationAudit, error) {
+	audit := ApplicationAudit{}
 	casks, err := b.getCasks()
 	if err != nil {
 		return nil, err
 	}
-	spew.Dump("casks", casks)
+	audit.BrewCask.Names = casks
+
+	brews, err := b.getBrews()
+	if err != nil {
+		return nil, err
+	}
+	audit.Brew.Names = brews
+
+	var wg sync.WaitGroup
 
 	caskInfo := make(map[string][]string)
 	for _, cask := range casks {
-		info, err := b.getCaskInfo(cask)
-		if err != nil {
-			return nil, err
-		}
-		// spew.Dump(info)
-		caskInfo[cask] = info
+		wg.Add(1)
+		go func(cask string) {
+			defer wg.Done()
+			info, err := b.getCaskInfo(cask)
+			if err != nil {
+				log.Println(err)
+			}
+			// spew.Dump(info)
+			caskInfo[cask] = info
+		}(cask)
 	}
-	spew.Dump("caskInfo", caskInfo)
+	wg.Wait()
 
 	masFoundApps, err := b.getMacAppStoreApplications()
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string][]string)
-	var userApps []string
-	var brewApps []string
-	var masApps []string
 	allApps, err := b.getApplications()
 	if err != nil {
 		return nil, err
@@ -97,7 +137,7 @@ func (b *MacHelper) AuditApplications() (map[string][]string, error) {
 			for _, caskInfo := range caskInfo {
 				appName := getAppNameFromCaskInfo(caskInfo)
 				if app == appName {
-					brewApps = append(brewApps, app)
+					audit.BrewCask.Artifacts = append(audit.BrewCask.Artifacts, app)
 					foundSource = true
 					break
 				}
@@ -105,24 +145,21 @@ func (b *MacHelper) AuditApplications() (map[string][]string, error) {
 			//TODO: make sure mas is installed
 			for _, masApp := range masFoundApps {
 				if app == masApp {
-					masApps = append(masApps, app)
+					audit.AppStore.Artifacts = append(audit.AppStore.Artifacts, app)
 					foundSource = true
 					break
 				}
 			}
 
 			if !foundSource {
-				userApps = append(userApps, app)
+				audit.UserInstalled.Artifacts = append(audit.UserInstalled.Artifacts, app)
 				log.Printf("couldn't find match for app=%v \n", app)
 			}
 		}
 
 	}
 
-	result["user"] = userApps
-	result["brew"] = brewApps
-	result["mas"] = masApps
-	return result, nil
+	return &audit, nil
 }
 
 //MacHelper represents the main helper
@@ -177,6 +214,9 @@ func (b *MacHelper) getMacAppStoreApplications() ([]string, error) {
 }
 func (b *MacHelper) getCasks() ([]string, error) {
 	return b.cm.runCommand("brew", "cask", "list")
+}
+func (b *MacHelper) getBrews() ([]string, error) {
+	return b.cm.runCommand("brew", "list")
 }
 func (b *MacHelper) getCaskInfo(name string) ([]string, error) {
 	return b.cm.runCommand("brew", "cask", "info", name)

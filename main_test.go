@@ -60,7 +60,7 @@ func TestAuditApplications(t *testing.T) {
 		masListResult        []string
 		getCasksResult       []string
 		getCaskInfoResult    map[string][]string
-		expectedResult       map[string][]string
+		expectedResult       *ApplicationAudit
 		shouldError          bool
 	}{
 		{
@@ -70,10 +70,21 @@ func TestAuditApplications(t *testing.T) {
 			getCasksResult:       []string{"app3"},
 			getCaskInfoResult: map[string][]string{
 				"app3": []string{"asdf", "artifacts", "App 3.app (App)"}},
-			expectedResult: map[string][]string{
-				"user": []string{"App 1.app"},
-				"brew": []string{"App 3.app"},
-				"mas":  []string{"App 2.app"}},
+			expectedResult: &ApplicationAudit{
+				Brew: BrewAudit{
+					Names: []string{"brewbinary1"},
+				},
+				BrewCask: BrewCaskAudit{
+					Artifacts: []string{"App 3.app"},
+					Names:     []string{"app3"},
+				},
+				AppStore: AppStoreAudit{
+					Artifacts: []string{"App 2.app"},
+				},
+				UserInstalled: UserInstalledAudit{
+					Artifacts: []string{"App 1.app"},
+				},
+			},
 		},
 		{
 			name:           "bad mas data",
@@ -90,6 +101,7 @@ func TestAuditApplications(t *testing.T) {
 			cmd := new(MockCommand)
 			m := MacHelper{cm: cmd}
 
+			cmd.On("runCommand", "brew", []string{"list"}).Return([]string{"brewbinary1"}, nil)
 			if len(tt.getCasksResult) > 0 {
 				cmd.On("runCommand", "brew", []string{"cask", "list"}).Return(tt.getCasksResult, nil)
 			}
