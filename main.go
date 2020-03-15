@@ -105,6 +105,7 @@ func (b *MacHelper) AuditApplications() (*ApplicationAudit, error) {
 
 	var wg sync.WaitGroup
 
+	var caskMu sync.Mutex
 	caskInfo := make(map[string][]string)
 	for _, cask := range casks {
 		wg.Add(1)
@@ -115,7 +116,9 @@ func (b *MacHelper) AuditApplications() (*ApplicationAudit, error) {
 				log.Println(err)
 			}
 			// spew.Dump(info)
+			caskMu.Lock()
 			caskInfo[cask] = info
+			caskMu.Unlock()
 		}(cask)
 	}
 	wg.Wait()
